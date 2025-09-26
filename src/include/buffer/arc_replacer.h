@@ -85,6 +85,15 @@ class ArcReplacer {
   std::mutex latch_;
 
   // TODO(student): You can add member variables / functions as you like.
+  
+  /* evict from a particular list */
+  auto EvictFrom(ArcStatus type) -> std::optional<frame_id_t>;
+  auto EvictFromGhost(ArcStatus type) -> bool;
+  /* accelerate the erase operation */
+  std::unordered_map<frame_id_t, std::list<frame_id_t>::iterator> mru_pos_;
+  std::unordered_map<frame_id_t, std::list<frame_id_t>::iterator> mfu_pos_;
+  std::unordered_map<page_id_t, std::list<page_id_t>::iterator> mru_ghost_pos_;
+  std::unordered_map<page_id_t, std::list<page_id_t>::iterator> mfu_ghost_pos_;
 };
 
 }  // namespace bustub
