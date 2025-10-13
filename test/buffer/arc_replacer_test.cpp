@@ -19,8 +19,8 @@
 #include "gtest/gtest.h"
 
 namespace bustub {
-
-TEST(ArcReplacerTest, DISABLED_SampleTest) {
+//DISABLED_SampleTest
+TEST(ArcReplacerTest, SampleTest) {
   // for the sake of simplicity
   // we use (a, fb) to notate page a on frame b,
   // (a, _) to mark ghost page with page id a
@@ -53,8 +53,11 @@ TEST(ArcReplacerTest, DISABLED_SampleTest) {
   //
   // Now Evict three pages from the replacer.
   // Since target size is still 0, mru side should be evicted
+  //std::cout << "need " << 2 << std::endl << std::fflush(stdout);
   ASSERT_EQ(2, arc_replacer.Evict());
+  //std::cout << "need " << 3 << std::endl << std::fflush(stdout);
   ASSERT_EQ(3, arc_replacer.Evict());
+  //std::cout << "need " << 4 << std::endl << std::fflush(stdout);
   ASSERT_EQ(4, arc_replacer.Evict());
   ASSERT_EQ(2, arc_replacer.Size());
   // Now [(2,_), (3,_), (4,_)][(5,f5), p(6,f6)]![(1,f1)][] p=0
@@ -101,8 +104,8 @@ TEST(ArcReplacerTest, DISABLED_SampleTest) {
   // Now [(5,_), (7,_)][p(6,f6)]![(1,f5), (4,f7), (3,f4), (2,f3)][] p=2
   ASSERT_EQ(2, arc_replacer.Evict());
 }
-
-TEST(ArcReplacerTest, DISABLED_SampleTest2) {
+//DISABLED_SampleTest2
+TEST(ArcReplacerTest, SampleTest2) {
   // Test a smaller capacity
   ArcReplacer arc_replacer(3);
   // Fill up the replacer
