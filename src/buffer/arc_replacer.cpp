@@ -126,6 +126,11 @@ void ArcReplacer::RecordAccess(frame_id_t frame_id, page_id_t page_id, [[maybe_u
 
     mfu_.push_back(frame_id);
     mfu_pos_[frame_id] = std::prev(mfu_.end());
+
+    if (!frame->evictable_) {
+      frame->evictable_ = true;
+      curr_size_++;
+    }
     return;
   }
   if (auto it = ghost_map_.find(page_id); it != ghost_map_.end()) {

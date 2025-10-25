@@ -505,10 +505,13 @@ auto BufferPoolManager::GetPinCount(page_id_t page_id) -> std::optional<size_t> 
 
   std::scoped_lock lk(*bpm_latch_);
 
-  if (page_table_.find(page_id) == page_table_.end()) {
-    return std::nullopt;
+  auto it = page_table_.find(page_id);
+  if (it == page_table_.end()) {
+      return std::nullopt;
   }
-  return frames_[page_table_[page_id]]->pin_count_.load();
+
+  int frame_id = it->second;
+  return frames_[frame_id]->pin_count_.load();
 }
 
 auto BufferPoolManager::GetFrame(page_id_t page_id, AccessType access_type) -> std::optional<frame_id_t> {
@@ -525,7 +528,6 @@ auto BufferPoolManager::GetFrame(page_id_t page_id, AccessType access_type) -> s
     // case 1: page in the buffer pool
     frame_id = it->second;
     replacer_->RecordAccess(frame_id, page_id, access_type);
-    replacer_->SetEvictable(frame_id, false);
     frames_[frame_id]->pin_count_++;
     return frame_id;
   }
@@ -546,7 +548,6 @@ auto BufferPoolManager::GetFrame(page_id_t page_id, AccessType access_type) -> s
 
   page_table_[page_id] = frame_id;
   replacer_->RecordAccess(frame_id, page_id, access_type);
-  replacer_->SetEvictable(frame_id, false);
 
   auto frame = frames_[frame_id];
   frame->pin_count_.store(1);
