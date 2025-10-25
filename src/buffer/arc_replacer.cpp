@@ -128,7 +128,7 @@ void ArcReplacer::RecordAccess(frame_id_t frame_id, page_id_t page_id, [[maybe_u
     mfu_pos_[frame_id] = std::prev(mfu_.end());
 
     if (!frame->evictable_) {
-      frame->evictable_ = true;
+      frame->evictable_ = false;
       curr_size_++;
     }
     return;
