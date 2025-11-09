@@ -208,7 +208,7 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
       replacer_(std::move(replacer)),
       bpm_latch_(std::move(bpm_latch)),
       disk_scheduler_(std::move(disk_scheduler)) {
-  
+
   frame_->rwlatch_.lock();
   is_valid_ = true;
   frame_->is_dirty_ = true;
@@ -230,6 +230,7 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
  * @param that The other page guard.
  */
 WritePageGuard::WritePageGuard(WritePageGuard &&that) noexcept {
+
   this->page_id_ = that.page_id_;
   this->frame_ = std::move(that.frame_);
   this->replacer_ = std::move(that.replacer_);

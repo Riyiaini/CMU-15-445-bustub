@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include <sstream>
+#include <algorithm>
 
 #include "common/exception.h"
 #include "common/rid.h"
@@ -33,9 +34,12 @@ namespace bustub {
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(int max_size) {
-  page_type_ = IndexPageType::LEAF_PAGE;
-  size_ = 0;
+  SetPageType(IndexPageType::LEAF_PAGE);
+  SetSize(0);
   SetMaxSize(max_size);
+
+  SetNextPageId(INVALID_PAGE_ID);
+  num_tombstones_ = 0;
 }
 
 /**
@@ -44,12 +48,103 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::Init(int max_size) {
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetTombstones() const -> std::vector<KeyType> {
-  UNIMPLEMENTED("TODO(P2): Add implementation.");
+  std::vector<KeyType> tombstones;
+  for (size_t i = 0; i < num_tombstones_; ++i) {
+    tombstones.push_back(key_array_[tombstones_[i]]);
+  }
+  return tombstones;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::InTombstones(const KeyType &key, KeyComparator comparator) const -> bool {
+  for (size_t i = 0; i < num_tombstones_; ++i) {
+    if (comparator(KeyAt(tombstones_[i]), key) == 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::InTombstones(const size_t index) const -> bool {
+  for (size_t i = 0; i < num_tombstones_; ++i) {
+    if (tombstones_[i] == index) {
+      return true;
+    }
+  }
+  return false;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::PushTombstone(const size_t index) {
+
+  tombstones_[num_tombstones_++] = index;
+}
+
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::PopTombstone() -> size_t {
+  size_t idx = tombstones_[0];
+  memmove(tombstones_, tombstones_ + 1, (num_tombstones_ - 1) * sizeof(size_t));
+  --num_tombstones_;
+  return idx;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::PopTombstoneAdjust() -> size_t {
+  size_t idx = tombstones_[0];
+  for (size_t i = 0; i < num_tombstones_ - 1; ++i) {
+    size_t next_idx = tombstones_[i + 1];
+    tombstones_[i] = next_idx > idx ? next_idx - 1 : next_idx;
+  }
+  --num_tombstones_;
+  return idx;
+}
+
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveTombstone(const KeyType &key, KeyComparator comparator) -> bool {
+  for (size_t i = 0; i < num_tombstones_; ++i) {
+    if (comparator(KeyAt(tombstones_[i]), key) == 0) {
+      // Shift left to remove tombstone
+      memmove(tombstones_ + i, tombstones_ + i + 1, (num_tombstones_ - i - 1) * sizeof(size_t));
+      --num_tombstones_;
+      return true;
+    }
+  }
+  return false;
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_LEAF_PAGE_TYPE::RemoveTombstone(size_t idx) -> bool {
+  for (size_t i = 0; i < num_tombstones_; ++i) {
+    if (tombstones_[i] == idx) {
+      // Shift left to remove tombstone
+      memmove(tombstones_ + i, tombstones_ + i + 1, (num_tombstones_ - i - 1) * sizeof(size_t));
+      --num_tombstones_;
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Warning: must be called after deletion and before insertion
+ */
+FULL_INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_LEAF_PAGE_TYPE::AdjustTombstone(size_t idx, bool is_delete) {
+  int shift = is_delete ? -1 : 1;
+  for (size_t i = 0; i < num_tombstones_; ++i) {
+    if (tombstones_[i] > idx) {
+      tombstones_[i] += shift;
+    }
+  } 
 }
 
 /**
  * Helper methods to set/get next page id
  */
+
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::GetNextPageId() const -> page_id_t {
   return next_page_id_;
@@ -66,9 +161,7 @@ void B_PLUS_TREE_LEAF_PAGE_TYPE::SetNextPageId(page_id_t next_page_id) {
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_LEAF_PAGE_TYPE::KeyAt(int index) const -> KeyType {
-  assert(index >= 0 && "Index must be non-negative");
-  assert(index < LEAF_PAGE_SLOT_CNT && "Index out of bounds");
-
+ 
   return key_array_[index];
 }
 

@@ -67,12 +67,30 @@ class BPlusTreeLeafPage : public BPlusTreePage {
 
   void Init(int max_size = LEAF_PAGE_SLOT_CNT);
 
+  // Tombstone methods
   auto GetTombstones() const -> std::vector<KeyType>;
+  auto InTombstones(const KeyType &key, KeyComparator comparator) const -> bool;
+  auto InTombstones(const size_t index) const -> bool;
+  auto GetNumTombstones() const -> size_t { return num_tombstones_; }
+  void SetNumTombstones(size_t num_tombs) { num_tombstones_ = num_tombs; }
+  void PushTombstone(const size_t index);
+  auto PopTombstone() -> size_t;
+  auto PopTombstoneAdjust() -> size_t;
+  auto RemoveTombstone(const KeyType &key, KeyComparator comparator) -> bool;
+  auto RemoveTombstone(size_t idx) -> bool;
+  auto GetTombstoneAt(size_t idx) const -> size_t { return tombstones_[idx]; }
+  auto GetTombstoneKeyAt(size_t idx) const -> KeyType { return key_array_[tombstones_[idx]]; }
+  void AdjustTombstone(size_t idx, bool is_delete);
 
+
+  
   // Helper methods
   auto GetNextPageId() const -> page_id_t;
   void SetNextPageId(page_id_t next_page_id);
   auto KeyAt(int index) const -> KeyType;
+  auto GetKeyArrayMut() -> KeyType* { return key_array_; }
+  auto GetValueArrayMut() -> ValueType* { return rid_array_; }
+  auto GetValueArray() const -> const ValueType* { return rid_array_; }
 
   /**
    * @brief for test only return a string representing all keys in

@@ -148,6 +148,7 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
 
     auto it = page_table_.find(page_id);
     if (it == page_table_.end()) {
+      disk_scheduler_->DeallocatePage(page_id);
       return true;
     }
     auto frame_id = it->second;

@@ -19,7 +19,7 @@ namespace bustub {
  * Page type enum class is defined in b_plus_tree_page.h
  */
 auto BPlusTreePage::IsLeafPage() const -> bool {
-    return this->page_type_ == IndexPageType::LEAF_PAGE;
+    return page_type_ == IndexPageType::LEAF_PAGE;
 }
 void BPlusTreePage::SetPageType(IndexPageType page_type) {
     this->page_type_ = page_type;
@@ -30,20 +30,20 @@ void BPlusTreePage::SetPageType(IndexPageType page_type) {
  * page)
  */
 auto BPlusTreePage::GetSize() const -> int {
-    return this->size_;
+    return size_;
 }
 void BPlusTreePage::SetSize(int size) {
     this->size_ = size;
 }
 void BPlusTreePage::ChangeSizeBy(int amount) {
-    this->size_ += amount;
+    size_ += amount;
 }
 
 /*
  * Helper methods to get/set max size (capacity) of the page
  */
 auto BPlusTreePage::GetMaxSize() const -> int {
-    return this->max_size_;
+    return max_size_;
 }
 void BPlusTreePage::SetMaxSize(int size) {
     this->max_size_ = size;
@@ -55,7 +55,7 @@ void BPlusTreePage::SetMaxSize(int size) {
  * But whether you will take ceil() or floor() depends on your implementation
  */
 auto BPlusTreePage::GetMinSize() const -> int {
-    return static_cast<int>((max_size_ + 1) / 2);
+    return std::floor(max_size_ / 2);
 }
 
 }  // namespace bustub

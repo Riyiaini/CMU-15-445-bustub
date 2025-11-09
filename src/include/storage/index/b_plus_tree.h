@@ -63,6 +63,9 @@ class Context {
   // Store the write guards of the pages that you're modifying here.
   std::deque<WritePageGuard> write_set_;
 
+  // Store the index to next pages in the write_set_. Used to find sibling pages
+  std::deque<int> child_index_set_;
+
   // You may want to use this when getting value, but not necessary.
   std::deque<ReadPageGuard> read_set_;
 
@@ -75,7 +78,7 @@ class Context {
 FULL_INDEX_TEMPLATE_ARGUMENTS_DEFN
 class BPlusTree {
   using InternalPage = BPlusTreeInternalPage<KeyType, page_id_t, KeyComparator>;
-  using LeafPage = BPlusTreeLeafPage<KeyType, ValueType, KeyComparator>;
+  using LeafPage = BPlusTreeLeafPage<KeyType, ValueType, KeyComparator, NumTombs>;
 
  public:
   explicit BPlusTree(std::string name, page_id_t header_page_id, BufferPoolManager *buffer_pool_manager,
@@ -95,7 +98,11 @@ class BPlusTree {
   auto GetValue(const KeyType &key, std::vector<ValueType> *result) -> bool;
 
   // Return the page id of the root node
-  auto GetRootPageId() -> page_id_t;
+  auto GetRootPageId() const -> page_id_t;
+
+  // destroy b+ tree
+  void Destroy();
+
 
   // Index iterator
   auto Begin() -> INDEXITERATOR_TYPE;
@@ -127,6 +134,20 @@ class BPlusTree {
   void PrintTree(page_id_t page_id, const BPlusTreePage *page);
 
   auto ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree;
+
+  void Split(Context &ctx);
+
+  void Merge(Context &ctx);
+
+  void MergeLeafPage(InternalPage *parent,
+                 LeafPage *left, LeafPage *right,
+                 int index);
+
+  void MergeInternalPage(InternalPage *parent, 
+                     InternalPage *left, InternalPage *right,
+                     int index);
+
+  auto search(const BPlusTreePage *page, bool isLeaf, KeyType key) -> int;
 
   // member variable
   std::string index_name_;
