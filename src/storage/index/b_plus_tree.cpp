@@ -213,7 +213,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key) {
     if (!page->IsLeafPage()) {
       InternalPage *inter_page = guard.AsMut<InternalPage>();
       if ((guard.GetPageId() != root_page_id && inter_page->GetSize() > inter_page->GetMinSize()) ||
-          (guard.GetPageId() == root_page_id && inter_page->GetSize() > 1)) {
+          (guard.GetPageId() == root_page_id && inter_page->GetSize() > 2)) {
         write_set.erase(write_set.begin(), write_set.end() - 1);
         child_index_set.clear();
         if (ctx.header_page_.has_value()) {
@@ -564,7 +564,7 @@ void BPLUSTREE_TYPE::Merge(Context &ctx) {
           auto left = left_guard.AsMut<LeafPage>();
           MergeLeafPage(parent_page, left, leaf, child_idx);
           page_id_t drop_page_id = node_guard.GetPageId();
-          node_guard.Drop();
+          node_guard=std::move(left_guard);
           bpm_->DeletePage(drop_page_id);
           leaf = left;
         } else {
@@ -636,7 +636,7 @@ void BPLUSTREE_TYPE::Merge(Context &ctx) {
           auto left = left_guard.AsMut<InternalPage>();
           MergeInternalPage(parent_page, left, inter, child_idx);
           page_id_t drop_page_id = node_guard.GetPageId();
-          node_guard.Drop();
+          node_guard = std::move(left_guard);
           bpm_->DeletePage(drop_page_id);
           inter = left;
         } else {
@@ -645,34 +645,29 @@ void BPLUSTREE_TYPE::Merge(Context &ctx) {
       }
     }
 
-    if (parent_page->GetSize() >= parent_page->GetMinSize()) {
-      child_index_set.clear();
-      write_set.clear();
+    if (!ctx.IsRootPage(parent_guard.GetPageId())) {
+       if (parent_page->GetSize() >= parent_page->GetMinSize()) {
+        child_index_set.clear();
+        write_set.clear();
+        return;
+       }
+    } else {
+      if (parent_page->GetSize() > 1) {
+        child_index_set.clear();
+        write_set.clear();
+        return;
+      }
+      auto header_guard = std::move(ctx.header_page_).value();
+      auto header_page = header_guard.AsMut<BPlusTreeHeaderPage>();
+      header_page->root_page_id_ = node_guard.GetPageId();
+      page_id_t drop_page_id = parent_guard.GetPageId();
+      parent_guard.Drop();
+      bpm_->DeletePage(drop_page_id);
       return;
     }
+
     child_index_set.pop_back();
     write_set.pop_back();
-  }
-
-  auto &node_guard = write_set.back();
-  if (ctx.IsRootPage(node_guard.GetPageId())) {
-    auto root_page = node_guard.AsMut<BPlusTreePage>();
-    if (root_page->GetSize() == 0 && root_page->IsLeafPage()) {
-      auto header_guard = std::move(ctx.header_page_).value();
-      auto header_page = header_guard.AsMut<BPlusTreeHeaderPage>();
-      header_page->root_page_id_ = INVALID_PAGE_ID;
-      page_id_t drop_page_id = node_guard.GetPageId();
-      node_guard.Drop();
-      bpm_->DeletePage(drop_page_id);
-    } else if (root_page->GetSize() == 1 && !root_page->IsLeafPage()) {
-      auto header_guard = std::move(ctx.header_page_).value();
-      auto header_page = header_guard.AsMut<BPlusTreeHeaderPage>();
-      header_page->root_page_id_ = node_guard.As<InternalPage>()->ValueAt(0);
-      page_id_t drop_page_id = node_guard.GetPageId();
-      node_guard.Drop();
-      bpm_->DeletePage(drop_page_id);
-    }
-    return;
   }
 }
 
