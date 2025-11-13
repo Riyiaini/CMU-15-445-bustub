@@ -97,6 +97,11 @@ class BPlusTree {
   // Return the value associated with a given key
   auto GetValue(const KeyType &key, std::vector<ValueType> *result) -> bool;
 
+  // Return the leaf page of a given key
+  auto FindLeafPage(const KeyType &key) -> std::optional<ReadPageGuard>;
+
+  auto FindLeftmostLeafPage() -> std::optional<ReadPageGuard>;
+
   // Return the page id of the root node
   auto GetRootPageId() const -> page_id_t;
 
