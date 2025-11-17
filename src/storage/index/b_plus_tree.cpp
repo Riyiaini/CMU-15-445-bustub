@@ -164,6 +164,7 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool 
         return false;
       }
       int lsz = leaf_page->GetSize();
+      leaf_page->AdjustTombstone(idx, false);
       memmove(lkeys + idx + 1, lkeys + idx, (lsz - idx) * sizeof(KeyType));
       memmove(lvals + idx + 1, lvals + idx, (lsz - idx) * sizeof(ValueType));
       lkeys[idx] = key;
@@ -374,10 +375,12 @@ void BPLUSTREE_TYPE::Split(Context &ctx) {
       old_page->SetSize(static_cast<int>(min_size));
       new_page->SetSize(static_cast<int>(right_count));
 
-      for (size_t i = 0; i < old_page->GetNumTombstones(); ++i) {
+      size_t numTombStone = old_page->GetNumTombstones();
+      for (size_t i = 0; i < numTombStone; ++i) {
         size_t tIndex = old_page->GetTombstoneAt(i);
         if (tIndex >= static_cast<size_t>(min_size)) {
           new_page->PushTombstone(tIndex - min_size);
+          old_page->RemoveTombstone(tIndex);
         }
       }
       insert_key = mid_key;
@@ -596,7 +599,7 @@ void BPLUSTREE_TYPE::Merge(Context &ctx) {
             parent_page->SetKeyAt(child_idx + 1, right->KeyAt(1));
             int rsz = right->GetSize();
             memmove(rkeys, rkeys + 1, (rsz - 1) * sizeof(KeyType));
-            memmove(rvals, rvals + 1, (rsz) * sizeof(page_id_t));
+            memmove(rvals, rvals + 1, (rsz - 1) * sizeof(page_id_t));
             right->SetSize(rsz - 1);
             continue;
           }
@@ -613,8 +616,8 @@ void BPLUSTREE_TYPE::Merge(Context &ctx) {
             page_id_t borrow_val = lvals2[lsz - 1];
             int isz = inter->GetSize();
             memmove(ikeys + 1, ikeys, isz * sizeof(KeyType));
-            memmove(ivals + 1, ivals, (isz + 1) * sizeof(page_id_t));
-            ikeys[0] = borrow_key;
+            memmove(ivals + 1, ivals, isz * sizeof(page_id_t));
+            ikeys[1] = borrow_key;
             ivals[0] = borrow_val;
             inter->SetSize(isz + 1);
             parent_page->SetKeyAt(child_idx, left->KeyAt(lsz - 1));
@@ -731,7 +734,7 @@ void BPLUSTREE_TYPE::MergeInternalPage(InternalPage *parent, InternalPage *left,
   memmove(pvals + index, pvals + index + 1, move_size * sizeof(page_id_t));
   parent->SetSize(psize - 1);
   lkeys[left_size] = parent_key;
-  memcpy(lkeys + left_size + 1, rkeys, (right_size - 1) * sizeof(KeyType));
+  memcpy(lkeys + left_size + 1, rkeys + 1, (right_size - 1) * sizeof(KeyType));
   memcpy(lvals + left_size, rvals, right_size * sizeof(page_id_t));
   left->SetSize(left_size + right_size);
 }

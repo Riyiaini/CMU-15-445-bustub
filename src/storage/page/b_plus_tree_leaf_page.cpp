@@ -135,7 +135,7 @@ FULL_INDEX_TEMPLATE_ARGUMENTS
 void B_PLUS_TREE_LEAF_PAGE_TYPE::AdjustTombstone(size_t idx, bool is_delete) {
   int shift = is_delete ? -1 : 1;
   for (size_t i = 0; i < num_tombstones_; ++i) {
-    if (tombstones_[i] > idx) {
+    if (tombstones_[i] >= idx) {
       tombstones_[i] += shift;
     }
   } 
