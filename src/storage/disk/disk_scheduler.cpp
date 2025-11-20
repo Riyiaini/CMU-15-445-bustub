@@ -44,7 +44,7 @@ void DiskScheduler::Schedule(std::vector<DiskRequest> &requests) {
     request_queue_.Put(std::move(req));
   }
   requests.clear();
-
+  
 }
 
 /**

@@ -39,6 +39,12 @@ ReadPageGuard::ReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> fra
       bpm_latch_(std::move(bpm_latch)),
       disk_scheduler_(std::move(disk_scheduler)) {
   
+  if (frame_->page_id_ != page_id_) {
+    std::unique_lock<std::mutex> latch(*bpm_latch_);
+    while (frame_->page_id_ != page_id_) {
+      frame_->cv_.wait(latch, [&]() { return frame_->page_id_ == page_id_; });
+    }
+  }
   frame_->rwlatch_.lock_shared();
   is_valid_ = true;
 }
@@ -209,6 +215,12 @@ WritePageGuard::WritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> f
       bpm_latch_(std::move(bpm_latch)),
       disk_scheduler_(std::move(disk_scheduler)) {
 
+  if (frame_->page_id_ != page_id_) {
+    std::unique_lock<std::mutex> latch(*bpm_latch_);
+    while (frame_->page_id_ != page_id_) {
+      frame_->cv_.wait(latch, [&]() { return frame_->page_id_ == page_id_; });
+    }
+  }
   frame_->rwlatch_.lock();
   is_valid_ = true;
   frame_->is_dirty_ = true;

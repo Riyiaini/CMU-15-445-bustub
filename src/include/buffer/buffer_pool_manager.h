@@ -76,6 +76,12 @@ class FrameHeader {
   /** @brief The readers / writer latch for this frame. */
   std::shared_mutex rwlatch_;
 
+  /** @brief The latch to ensure frame's data integrity */
+  std::mutex data_latch_;
+
+  /** @brief The condition variable for this frame. */
+  std::condition_variable cv_;
+
   /** @brief The number of pins on this frame keeping the page in memory. */
   std::atomic<size_t> pin_count_;
 
@@ -174,7 +180,7 @@ class BufferPoolManager {
    * pointer to a `FrameHeader` that already has a page's data stored inside of it, or an index to said `FrameHeader`.
    */
 
-  auto GetFrame(page_id_t page_id, AccessType access_type) -> std::optional<frame_id_t>;
+  auto GetFrame(page_id_t page_id, AccessType access_type) -> std::shared_ptr<FrameHeader>;
 
   auto GenWritePageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame) -> WritePageGuard;
   auto GenReadPageGuard(page_id_t page_id, std::shared_ptr<FrameHeader> frame) -> ReadPageGuard;

@@ -144,7 +144,7 @@ auto BufferPoolManager::NewPage() -> page_id_t {
 auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
 
   {
-    std::scoped_lock<std::mutex> lk(*bpm_latch_);
+    std::scoped_lock latch(*bpm_latch_);
 
     auto it = page_table_.find(page_id);
     if (it == page_table_.end()) {
@@ -212,14 +212,12 @@ auto BufferPoolManager::DeletePage(page_id_t page_id) -> bool {
  */
 auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_type) -> std::optional<WritePageGuard> {
 
-  std::optional<frame_id_t> frame_id;
-
-  frame_id = GetFrame(page_id, access_type);
-  if (!frame_id.has_value()) {
+  auto frame = GetFrame(page_id, access_type);
+  if (frame == nullptr) {
     return std::nullopt;
   }
     
-  return GenWritePageGuard(page_id, frames_[frame_id.value()]);
+  return GenWritePageGuard(page_id, frame);
 }
 
 /**
@@ -248,14 +246,12 @@ auto BufferPoolManager::CheckedWritePage(page_id_t page_id, AccessType access_ty
  */
 auto BufferPoolManager::CheckedReadPage(page_id_t page_id, AccessType access_type) -> std::optional<ReadPageGuard> {
 
-  std::optional<frame_id_t> frame_id;
-
-  frame_id = GetFrame(page_id, access_type);
-  if (!frame_id.has_value()) {
+  auto frame = GetFrame(page_id, access_type);
+  if (frame == nullptr) {
     return std::nullopt;
   }
     
-  return GenReadPageGuard(page_id, frames_[frame_id.value()]);
+  return GenReadPageGuard(page_id, frame);
 }
 
 /**
@@ -374,7 +370,7 @@ auto BufferPoolManager::FlushPageUnsafe(page_id_t page_id) -> bool {
  */
 auto BufferPoolManager::FlushPage(page_id_t page_id) -> bool {
 
-  std::scoped_lock<std::mutex> lk(*bpm_latch_);
+  std::scoped_lock latch(*bpm_latch_);
 
   frame_id_t frame_id;
 
@@ -455,7 +451,7 @@ void BufferPoolManager::FlushAllPagesUnsafe() {
  */
 void BufferPoolManager::FlushAllPages() {
 
-  std::scoped_lock<std::mutex> lk(*bpm_latch_);
+  std::scoped_lock latch(*bpm_latch_);
 
   std::vector<DiskRequest> requests;
   std::vector<std::future<bool>> futures;
@@ -504,7 +500,7 @@ void BufferPoolManager::FlushAllPages() {
  */
 auto BufferPoolManager::GetPinCount(page_id_t page_id) -> std::optional<size_t> {
 
-  std::scoped_lock lk(*bpm_latch_);
+  std::scoped_lock latch(*bpm_latch_);
 
   auto it = page_table_.find(page_id);
   if (it == page_table_.end()) {
@@ -515,43 +511,48 @@ auto BufferPoolManager::GetPinCount(page_id_t page_id) -> std::optional<size_t> 
   return frames_[frame_id]->pin_count_.load();
 }
 
-auto BufferPoolManager::GetFrame(page_id_t page_id, AccessType access_type) -> std::optional<frame_id_t> {
+auto BufferPoolManager::GetFrame(page_id_t page_id, AccessType access_type) -> std::shared_ptr<FrameHeader> {
 
   frame_id_t frame_id;
-  std::scoped_lock<std::mutex> lk(*bpm_latch_);
-  
-  if (page_id < 0 && page_id >= next_page_id_.load()) {
-    return std::nullopt;
-  }
+  std::shared_ptr<FrameHeader> frame;
 
-  auto it = page_table_.find(page_id);
-  if (it != page_table_.end()) {
-    // case 1: page in the buffer pool
-    frame_id = it->second;
-    replacer_->RecordAccess(frame_id, page_id, access_type);
-    frames_[frame_id]->pin_count_++;
-    return frame_id;
-  }
-  else if (!free_frames_.empty()) {
-    // case 2: enough memory to allocate
-    frame_id = free_frames_.front();
-    free_frames_.pop_front();
-  } 
-  else {
-    // case 3: evict a page from memory
-    auto evt_frame_id = replacer_->Evict();
-    if (!evt_frame_id.has_value()) {
-      return std::nullopt;
+  {
+    std::scoped_lock latch(*bpm_latch_);
+    
+    if (page_id < 0 || page_id >= next_page_id_.load()) {
+      return nullptr;
     }
-    frame_id = evt_frame_id.value();
-    page_table_.erase(frames_[frame_id]->page_id_);    
+
+    auto it = page_table_.find(page_id);
+    if (it != page_table_.end()) {
+      
+      // case 1: page in the buffer pool
+      frame_id = it->second;
+      replacer_->RecordAccess(frame_id, page_id, access_type);
+      frame = frames_[frame_id];
+      frame->pin_count_++;
+      return frame;
+    }
+    else if (!free_frames_.empty()) {
+      // case 2: enough memory to allocate
+      frame_id = free_frames_.front();
+      free_frames_.pop_front();
+    } 
+    else {
+      // case 3: evict a page from memory
+      auto evt_frame_id = replacer_->Evict();
+      if (!evt_frame_id.has_value()) {
+        return nullptr;
+      }
+      frame_id = evt_frame_id.value();
+      page_table_.erase(frames_[frame_id]->page_id_);    
+    }
+
+    frame = frames_[frame_id];
+    frame->pin_count_.store(1);
+    page_table_[page_id] = frame_id;
+    replacer_->RecordAccess(frame_id, page_id, access_type);
   }
-
-  page_table_[page_id] = frame_id;
-  replacer_->RecordAccess(frame_id, page_id, access_type);
-
-  auto frame = frames_[frame_id];
-  frame->pin_count_.store(1);
 
   std::vector<DiskRequest> requests; 
   std::optional<std::future<bool>> f1 = std::nullopt;
@@ -574,10 +575,13 @@ auto BufferPoolManager::GetFrame(page_id_t page_id, AccessType access_type) -> s
     f1->get();
     frame->is_dirty_ = false;
   }
-  f2.get();
-  frame->page_id_ = page_id;
-
-  return frame_id;
+  {
+    std::scoped_lock latch(frame->data_latch_);
+    f2.get();
+    frame->page_id_ = page_id;
+    frame->cv_.notify_all();
+  }
+  return frame;
 }
 
 
