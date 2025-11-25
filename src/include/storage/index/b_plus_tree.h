@@ -70,6 +70,20 @@ class Context {
   std::deque<ReadPageGuard> read_set_;
 
   auto IsRootPage(page_id_t page_id) -> bool { return page_id == root_page_id_; }
+
+  void Drop() {
+    header_page_.reset();
+    while (read_set_.size() > 1) { read_set_.pop_front(); }  
+    while (write_set_.size() > 1) { write_set_.pop_front(); }
+    child_index_set_.clear();  
+  }
+
+  void Clear() {
+    header_page_.reset();
+    read_set_.clear();
+    write_set_.clear();
+    child_index_set_.clear();
+  }
 };
 
 #define BPLUSTREE_TYPE BPlusTree<KeyType, ValueType, KeyComparator, NumTombs>
@@ -140,9 +154,21 @@ class BPlusTree {
 
   auto ToPrintableBPlusTree(page_id_t root_id) -> PrintableBPlusTree;
 
-  void Split(Context &ctx);
+  void ResolveOverflow(Context &ctx);
 
-  void Merge(Context &ctx);
+  void ResolveUnderflow(Context &ctx);
+  
+  struct RebalanceResult {
+    bool fixed = false;
+    bool merged = false;
+    bool merged_into_left = false;
+  };
+
+  auto CoelesceOrRedistributeLeaf(InternalPage *parent, int child_idx,
+                                 WritePageGuard &node_guard) -> RebalanceResult;
+
+  auto CoelesceOrRedistributeInternal(InternalPage *parent, int child_idx,
+                                     WritePageGuard &node_guard) -> RebalanceResult;
 
   void MergeLeafPage(InternalPage *parent,
                  LeafPage *left, LeafPage *right,
@@ -151,8 +177,6 @@ class BPlusTree {
   void MergeInternalPage(InternalPage *parent, 
                      InternalPage *left, InternalPage *right,
                      int index);
-
-  auto search(const BPlusTreePage *page, bool isLeaf, KeyType key) -> int;
 
   // member variable
   std::string index_name_;

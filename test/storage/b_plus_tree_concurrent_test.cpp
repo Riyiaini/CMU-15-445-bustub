@@ -418,6 +418,8 @@ void MixTest2Call() {
     }
     InsertHelper(&tree, preserved_keys);
 
+    // tree.Print(bpm);
+
     size_t size;
 
     auto insert_task = [&](int tid) { InsertHelper(&tree, dynamic_keys); };
@@ -441,6 +443,10 @@ void MixTest2Call() {
     // Check all reserved keys exist
     size = 0;
 
+    /* std::cout << "Final tree structure: " << std::endl;
+    std::cout << "---------------------" << std::endl;
+    tree.Print(bpm); */
+
     for (auto iter = tree.Begin(); iter != tree.End(); ++iter) {
       const auto &pair = *iter;
       if ((pair.first).ToString() % sieve == 0) {
@@ -455,32 +461,32 @@ void MixTest2Call() {
   }
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_InsertTest1) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, InsertTest1) {  // NOLINT
   InsertTest1Call<0>();
   InsertTest1Call<3>();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_InsertTest2) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, InsertTest2) {  // NOLINT
   InsertTest2Call<0>();
   InsertTest2Call<3>();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest1) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, DeleteTest1) {  // NOLINT
   DeleteTest1Call<0>();
   DeleteTest1Call<3>();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_DeleteTest2) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, DeleteTest2) {  // NOLINT
   DeleteTest2Call<0>();
   DeleteTest2Call<3>();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_MixTest1) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, MixTest1) {  // NOLINT
   MixTest1Call<0>();
   MixTest1Call<3>();
 }
 
-TEST(BPlusTreeConcurrentTest, DISABLED_MixTest2) {  // NOLINT
+TEST(BPlusTreeConcurrentTest, MixTest2) {  // NOLINT
   MixTest2Call<0>();
   MixTest2Call<3>();
 }

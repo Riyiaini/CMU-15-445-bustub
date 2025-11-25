@@ -18,6 +18,7 @@
 
 #include "storage/page/b_plus_tree_page.h"
 
+
 namespace bustub {
 
 #define B_PLUS_TREE_LEAF_PAGE_TYPE BPlusTreeLeafPage<KeyType, ValueType, KeyComparator, NumTombs>
@@ -76,22 +77,33 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void PushTombstone(const size_t index);
   auto PopTombstone() -> size_t;
   auto PopTombstoneAdjust() -> size_t;
-  auto RemoveTombstone(const KeyType &key, KeyComparator comparator) -> bool;
-  auto RemoveTombstone(size_t idx) -> bool;
+  auto RemoveTombstoneByKey(const KeyType &key, KeyComparator comparator) -> bool;
+  auto RemoveTombstoneByIndex(size_t idx) -> bool;
   auto GetTombstoneAt(size_t idx) const -> size_t { return tombstones_[idx]; }
   auto GetTombstoneKeyAt(size_t idx) const -> KeyType { return key_array_[tombstones_[idx]]; }
   void AdjustTombstone(size_t idx, bool is_delete);
-
-
+  auto EvictTombstone() -> bool;
+  
   
   // Helper methods
-  auto GetNextPageId() const -> page_id_t;
-  void SetNextPageId(page_id_t next_page_id);
-  auto KeyAt(int index) const -> KeyType;
-  auto ValueAt(int index) const -> ValueType;
+  auto GetNextPageId() const -> page_id_t { return next_page_id_; }
+  void SetNextPageId(page_id_t next_page_id) { this->next_page_id_ = next_page_id; }
+  auto KeyAt(int index) const -> KeyType { return key_array_[index]; }
+  auto ValueAt(int index) const -> ValueType { return rid_array_[index]; }
+  void SetKeyAt(int index, const KeyType &key) { key_array_[index] = key; }
+  void SetValueAt(int index, const ValueType &value) { rid_array_[index] = value; }
   auto GetKeyArrayMut() -> KeyType* { return key_array_; }
   auto GetValueArrayMut() -> ValueType* { return rid_array_; }
   auto GetValueArray() const -> const ValueType* { return rid_array_; }
+
+  auto PopFront() -> std::pair<KeyType, ValueType>;
+  void PushBack(const KeyType &key, const ValueType &value);
+  auto PopBack() -> std::pair<KeyType, ValueType>;
+  void PushFront(const KeyType &key, const ValueType &value);
+  auto GetIndexByKey(const KeyType &key, KeyComparator comparator) const -> int;
+  auto Insert(const KeyType &key, const ValueType &value, KeyComparator comparator) -> bool;
+  auto Erase(const KeyType &key, KeyComparator comparator) -> bool;
+  auto Split(BPlusTreeLeafPage *new_page) -> KeyType;
 
   /**
    * @brief for test only return a string representing all keys in

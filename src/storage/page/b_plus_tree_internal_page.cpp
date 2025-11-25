@@ -37,44 +37,92 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Init(int max_size) {
   SetMaxSize(max_size + 1);
 }
 
-/**
- * @brief Helper method to get/set the key associated with input "index"(a.k.a
- * array offset).
- *
- * @param index The index of the key to get. Index must be non-zero.
- * @return Key at index
- */
+
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::KeyAt(int index) const -> KeyType {
-  // the number of child pages is one more than the number of keys,
-  // so key_array_[0] is set invalid;
-  
-  return key_array_[index];
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::GetIndexByKey(const KeyType& key, KeyComparator comparator) const -> int {
+  auto size = GetSize();
+  auto it = std::lower_bound(key_array_ + 1, key_array_ + size, key,
+                            [comparator](const KeyType &a, const KeyType &b) {
+                              return comparator(a, b) < 0;
+                            });
+  int pos = static_cast<int>(it - key_array_);
+  if (pos < size && comparator(*it, key) == 0) {
+    return pos;
+  }
+  return pos - 1;
 }
 
-/**
- * @brief Set key at the specified index.
- *
- * @param index The index of the key to set. Index must be non-zero.
- * @param key The new value for key
- */
 INDEX_TEMPLATE_ARGUMENTS
-void B_PLUS_TREE_INTERNAL_PAGE_TYPE::SetKeyAt(int index, const KeyType &key) {
-
-  key_array_[index] = key;
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Insert(const KeyType &key, const ValueType &value,
+                                           KeyComparator comparator) {
+  int size = GetSize();
+  BUSTUB_ASSERT(size < GetMaxSize(), "page is full");
+  int slot = GetIndexByKey(key, comparator) + 1;
+  int move_size = size - slot;
+  memmove(key_array_ + slot + 1, key_array_ + slot, move_size * sizeof(KeyType));
+  memmove(page_id_array_ + slot + 1, page_id_array_ + slot, move_size * sizeof(ValueType));
+  key_array_[slot] = key;
+  page_id_array_[slot] = value;
+  SetSize(size + 1);
 }
 
-/**
- * @brief Helper method to get the value associated with input "index"(a.k.a array
- * offset)
- *
- * @param index The index of the value to get.
- * @return Value at index
- */
 INDEX_TEMPLATE_ARGUMENTS
-auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::ValueAt(int index) const -> ValueType {
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Split(BPlusTreeInternalPage *new_page) -> KeyType {
+  int max_size = GetMaxSize();
+  int min_size = GetMinSize();
+  auto mid_key = key_array_[min_size];
+  int move_keys = max_size - min_size - 1;
+  int move_vals = max_size - min_size;
+  memcpy(new_page->GetKeyArrayMut() + 1, key_array_ + min_size + 1, move_keys * sizeof(KeyType));
+  memcpy(new_page->GetValueArrayMut(), page_id_array_ + min_size, move_vals * sizeof(ValueType));
+  SetSize(min_size);
+  new_page->SetSize(move_vals);
+  return mid_key;
+}
 
-  return page_id_array_[index];
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::PopFront() -> std::pair<KeyType, ValueType> {
+  int size = GetSize();
+  BUSTUB_ASSERT(size > 1, "page is empty");
+  KeyType front_key = key_array_[1];
+  ValueType front_value = page_id_array_[0];
+  int move_keys = size - 2;
+  int move_vals = size - 1;
+  memmove(key_array_ + 1, key_array_ + 2, move_keys * sizeof(KeyType));
+  memmove(page_id_array_, page_id_array_ + 1, move_vals * sizeof(ValueType));
+  SetSize(size - 1);
+  return {front_key, front_value};
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::PushBack(const KeyType &key, const ValueType &value) {
+  int size = GetSize();
+  BUSTUB_ASSERT(size < GetMaxSize(), "page is full");
+  key_array_[size] = key;
+  page_id_array_[size] = value;
+  SetSize(size + 1);
+}
+
+
+INDEX_TEMPLATE_ARGUMENTS
+auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::PopBack() -> std::pair<KeyType, ValueType> {
+  int size = GetSize();
+  BUSTUB_ASSERT(size > 1, "page is empty");
+  KeyType back_key = key_array_[size - 1];
+  ValueType back_value = page_id_array_[size - 1];
+  SetSize(size - 1);
+  return {back_key, back_value};
+}
+
+INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::PushFront(const KeyType &key, const ValueType &value) {
+  int size = GetSize();
+  BUSTUB_ASSERT(size < GetMaxSize(), "page is full");
+  memmove(key_array_ + 2, key_array_ + 1, (size - 1) * sizeof(KeyType));
+  memmove(page_id_array_ + 1, page_id_array_, size * sizeof(ValueType));
+  key_array_[1] = key;
+  page_id_array_[0] = value;
+  SetSize(size + 1);
 }
 
 // valuetype for internalNode should be page id_t

@@ -52,20 +52,20 @@ class BPlusTreeInternalPage : public BPlusTreePage {
 
   void Init(int max_size = INTERNAL_PAGE_SLOT_CNT);
 
-  auto KeyAt(int index) const -> KeyType;
-
-  void SetKeyAt(int index, const KeyType &key);
-
-  /**
-   * @param value The value to search for
-   * @return The index that corresponds to the specified value
-   */
-  auto ValueIndex(const ValueType &value) const -> int;
-
-  auto ValueAt(int index) const -> ValueType;
+  auto KeyAt(int index) const -> KeyType { return key_array_[index]; }
+  void SetKeyAt(int index, const KeyType &key) { key_array_[index] = key; }
+  auto ValueAt(int index) const -> ValueType { return page_id_array_[index]; }
+  auto SetValueAt(int index, const ValueType &value) -> void { page_id_array_[index] = value; }
 
   auto GetKeyArrayMut() -> KeyType* { return key_array_; }
   auto GetValueArrayMut() -> ValueType* { return page_id_array_; }
+  auto GetIndexByKey(const KeyType &key, KeyComparator comparator) const -> int;
+  void Insert(const KeyType &key, const ValueType &value, KeyComparator comparator);
+  auto Split(BPlusTreeInternalPage *new_page) -> KeyType;
+  auto PopFront() -> std::pair<KeyType, ValueType>;
+  void PushBack(const KeyType &key, const ValueType &value);
+  auto PopBack() -> std::pair<KeyType, ValueType>;
+  void PushFront(const KeyType &key, const ValueType &value);
 
   /**
    * @brief For test only, return a string representing all keys in
