@@ -61,6 +61,7 @@ class BPlusTreeInternalPage : public BPlusTreePage {
   auto GetValueArrayMut() -> ValueType* { return page_id_array_; }
   auto GetIndexByKey(const KeyType &key, KeyComparator comparator) const -> int;
   void Insert(const KeyType &key, const ValueType &value, KeyComparator comparator);
+  void EraseAt(int index);
   auto Split(BPlusTreeInternalPage *new_page) -> KeyType;
   auto PopFront() -> std::pair<KeyType, ValueType>;
   void PushBack(const KeyType &key, const ValueType &value);

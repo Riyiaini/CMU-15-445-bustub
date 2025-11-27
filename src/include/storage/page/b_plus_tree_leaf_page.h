@@ -77,8 +77,9 @@ class BPlusTreeLeafPage : public BPlusTreePage {
   void PushTombstone(const size_t index);
   auto PopTombstone() -> size_t;
   auto PopTombstoneAdjust() -> size_t;
-  auto RemoveTombstoneByKey(const KeyType &key, KeyComparator comparator) -> bool;
+  auto RemoveTombstoneByKey(const KeyType &key, KeyComparator comparator, size_t &idx) -> bool;
   auto RemoveTombstoneByIndex(size_t idx) -> bool;
+  auto RemoveTombstoneAt(int idx) -> bool;
   auto GetTombstoneAt(size_t idx) const -> size_t { return tombstones_[idx]; }
   auto GetTombstoneKeyAt(size_t idx) const -> KeyType { return key_array_[tombstones_[idx]]; }
   void AdjustTombstone(size_t idx, bool is_delete);

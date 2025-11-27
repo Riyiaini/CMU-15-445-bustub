@@ -102,6 +102,20 @@ auto BPLUSTREE_TYPE::GetValue(const KeyType &key, std::vector<ValueType> *result
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool {
   // Declaration of context instance. Using the Context is not necessary but advised.
+
+  if (leaf_max_size_ >= 8){
+    
+    auto leaf_guard = FindLeafPageOptimisticInsert(key);
+    if (leaf_guard.has_value()) {
+      auto leaf_page = leaf_guard->template AsMut<LeafPage>();
+      if (leaf_page->Insert(key, value, comparator_)) {
+        return true;
+      }
+      return false;
+    }
+  }
+
+  std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
   Context ctx;
   ctx.header_page_ = bpm_->WritePage(header_page_id_);
   auto &header_guard = ctx.header_page_.value();
@@ -166,6 +180,16 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool 
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 void BPLUSTREE_TYPE::Remove(const KeyType &key) {
+
+  if (leaf_max_size_ >= 8){
+    auto leaf_guard = FindLeafPageOptimisticDelete(key);
+    if (leaf_guard.has_value()) {
+      auto leaf_page = leaf_guard->template AsMut<LeafPage>();
+      leaf_page->Erase(key, comparator_);
+      return;
+    }
+  }
+
   Context ctx;
   ctx.header_page_ = bpm_->WritePage(header_page_id_);
   auto &header_guard = ctx.header_page_.value();
@@ -212,7 +236,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key) {
   } else if (ctx.IsRootPage(guard.GetPageId()) && leaf_page->GetSize() == 0) {
     header_page->root_page_id_ = INVALID_PAGE_ID;
     page_id_t old_root_id = guard.GetPageId();
-    write_set.pop_back();
+    guard.Drop();
     bpm_->DeletePage(old_root_id);
   }
 }
@@ -230,7 +254,7 @@ void BPLUSTREE_TYPE::Remove(const KeyType &key) {
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
-  auto guard = FindLeftmostLeafPage();
+  auto guard = FindLeftmostLeafPageRead();
   if (!guard.has_value()) {
     return End();
   }
@@ -247,7 +271,7 @@ auto BPLUSTREE_TYPE::Begin() -> INDEXITERATOR_TYPE {
  */
 FULL_INDEX_TEMPLATE_ARGUMENTS
 auto BPLUSTREE_TYPE::Begin(const KeyType &key) -> INDEXITERATOR_TYPE {
-  auto guard = FindLeafPage(key);
+  auto guard = FindLeafPageRead(key);
   if (!guard.has_value()) {
     return End();
   }
@@ -360,7 +384,8 @@ void BPLUSTREE_TYPE::ResolveUnderflow(Context &ctx) {
         auto header_guard = std::move(ctx.header_page_).value();
         auto header_page = header_guard.AsMut<BPlusTreeHeaderPage>();
         header_page->root_page_id_ = leaf_guard.GetPageId();
-        auto drop_page_id = header_guard.GetPageId();
+        auto drop_page_id = parent_guard.GetPageId();
+        parent_guard.Drop();
         bpm_->DeletePage(drop_page_id);
       }
       ctx.Clear();
@@ -453,7 +478,7 @@ auto BPLUSTREE_TYPE::CoelesceOrRedistributeLeaf(InternalPage *parent, int child_
 
       result.fixed = true;
       leaf_page->AdjustTombstone(0, false);
-      if (left_page->RemoveTombstoneByIndex(left_page->GetSize() - 1)) {
+      if (left_page->RemoveTombstoneByIndex(left_page->GetSize())) {
         if (leaf_page->GetNumTombstones() == LEAF_PAGE_TOMB_CNT) {
           leaf_page->EvictTombstone();
           result.fixed = false;
@@ -481,8 +506,8 @@ auto BPLUSTREE_TYPE::CoelesceOrRedistributeLeaf(InternalPage *parent, int child_
     auto left_page = left_guard.AsMut<LeafPage>();
     MergeLeafPage(parent, left_page, leaf_page, child_idx);
     page_id_t drop_page_id = node_guard.GetPageId();
-    bpm_->DeletePage(drop_page_id);
     node_guard = std::move(left_guard);
+    bpm_->DeletePage(drop_page_id);
     result.fixed = left_page->GetSize() >= left_page->GetMinSize();
     result.merged_into_left = true;
   } else {
@@ -568,18 +593,12 @@ void BPLUSTREE_TYPE::MergeLeafPage(InternalPage *parent, LeafPage *left, LeafPag
 
   int left_size = left->GetSize();
   int right_size = right->GetSize();
-  auto pkeys = parent->GetKeyArrayMut();
-  auto pvals = parent->GetValueArrayMut();
   auto lkeys = left->GetKeyArrayMut();
   auto lvals = left->GetValueArrayMut();
   auto rkeys = right->GetKeyArrayMut();
   auto rvals = right->GetValueArrayMut();
 
-  int psize = parent->GetSize();
-  int move_size = psize - (index + 1);
-  memmove(pkeys + index, pkeys + index + 1, move_size * sizeof(KeyType));
-  memmove(pvals + index, pvals + index + 1, move_size * sizeof(page_id_t));
-  parent->SetSize(psize - 1);
+  parent->EraseAt(index);
   memcpy(lkeys + left_size, rkeys, right_size * sizeof(KeyType));
   memcpy(lvals + left_size, rvals, right_size * sizeof(ValueType));
   left->SetSize(left_size + right_size);
@@ -587,14 +606,10 @@ void BPLUSTREE_TYPE::MergeLeafPage(InternalPage *parent, LeafPage *left, LeafPag
   size_t left_tb_size = left->GetNumTombstones();
   size_t right_tb_size = right->GetNumTombstones();
   int overflow = static_cast<int>(left_tb_size + right_tb_size) - LEAF_PAGE_TOMB_CNT;
+  left_size -= overflow;
 
   while (overflow > 0) {
-    size_t pos = left->PopTombstoneAdjust();
-    int lsz = left->GetSize();
-    int mv = lsz - (pos + 1);
-    memmove(lkeys + pos, lkeys + pos + 1, mv * sizeof(KeyType));
-    memmove(lvals + pos, lvals + pos + 1, mv * sizeof(ValueType));
-    left->SetSize(lsz - 1);
+    left->EvictTombstone();
     overflow--;
   }
 
@@ -609,19 +624,13 @@ void BPLUSTREE_TYPE::MergeInternalPage(InternalPage *parent, InternalPage *left,
 
   int left_size = left->GetSize();
   int right_size = right->GetSize();
-  auto pkeys = parent->GetKeyArrayMut();
-  auto pvals = parent->GetValueArrayMut();
   auto lkeys = left->GetKeyArrayMut();
   auto lvals = left->GetValueArrayMut();
   auto rkeys = right->GetKeyArrayMut();
   auto rvals = right->GetValueArrayMut();
 
   KeyType parent_key = parent->KeyAt(index);
-  int psize = parent->GetSize();
-  int move_size = psize - (index + 1);
-  memmove(pkeys + index, pkeys + index + 1, move_size * sizeof(KeyType));
-  memmove(pvals + index, pvals + index + 1, move_size * sizeof(page_id_t));
-  parent->SetSize(psize - 1);
+  parent->EraseAt(index);
   lkeys[left_size] = parent_key;
   memcpy(lkeys + left_size + 1, rkeys + 1, (right_size - 1) * sizeof(KeyType));
   memcpy(lvals + left_size, rvals, right_size * sizeof(page_id_t));
@@ -629,7 +638,7 @@ void BPLUSTREE_TYPE::MergeInternalPage(InternalPage *parent, InternalPage *left,
 }
 
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::FindLeafPage(const KeyType &key) -> std::optional<ReadPageGuard> {
+auto BPLUSTREE_TYPE::FindLeafPageRead(const KeyType &key) -> std::optional<ReadPageGuard> {
   auto header_guard = bpm_->ReadPage(header_page_id_);
   auto header_page = header_guard.As<BPlusTreeHeaderPage>();
   auto root_page_id = header_page->root_page_id_;
@@ -638,6 +647,7 @@ auto BPLUSTREE_TYPE::FindLeafPage(const KeyType &key) -> std::optional<ReadPageG
     return std::nullopt;
   }
   auto cur_guard = bpm_->ReadPage(root_page_id);
+  header_guard.Drop();
   while (true) {
     auto page = cur_guard.As<BPlusTreePage>();
     if (page->IsLeafPage()) {
@@ -651,7 +661,7 @@ auto BPLUSTREE_TYPE::FindLeafPage(const KeyType &key) -> std::optional<ReadPageG
 }
 
 FULL_INDEX_TEMPLATE_ARGUMENTS
-auto BPLUSTREE_TYPE::FindLeftmostLeafPage() -> std::optional<ReadPageGuard> {
+auto BPLUSTREE_TYPE::FindLeftmostLeafPageRead() -> std::optional<ReadPageGuard> {
   auto header_guard = bpm_->ReadPage(header_page_id_);
   auto header_page = header_guard.As<BPlusTreeHeaderPage>();
   auto root_page_id = header_page->root_page_id_;
@@ -660,6 +670,7 @@ auto BPLUSTREE_TYPE::FindLeftmostLeafPage() -> std::optional<ReadPageGuard> {
     return std::nullopt;
   }
   auto cur_guard = bpm_->ReadPage(root_page_id);
+  header_guard.Drop();
   while (true) {
     auto page = cur_guard.As<BPlusTreePage>();
     if (page->IsLeafPage()) {
@@ -671,7 +682,95 @@ auto BPLUSTREE_TYPE::FindLeftmostLeafPage() -> std::optional<ReadPageGuard> {
   return cur_guard;
 }
 
-template class BPlusTree<GenericKey<4>, RID, GenericComparator<4>>;
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::FindLeafPageOptimisticInsert(const KeyType &key) -> std::optional<WritePageGuard> {
+  auto header_guard = bpm_->ReadPage(header_page_id_);
+  auto header_page = header_guard.As<BPlusTreeHeaderPage>();
+  auto root_page_id = header_page->root_page_id_;
+
+  if (root_page_id == INVALID_PAGE_ID) {
+    return std::nullopt;
+  }
+  auto cur_guard = bpm_->ReadPage(root_page_id);
+  {
+    auto page = cur_guard.As<BPlusTreePage>();
+    if (page->IsLeafPage()) {
+      cur_guard.Drop();
+      auto write_guard = bpm_->WritePage(root_page_id);
+      auto leaf_page = write_guard.As<LeafPage>();
+      if (leaf_page->GetSize() < leaf_page->GetMaxSize() - 1 ||
+          leaf_page->InTombstones(key, comparator_)) {
+        return write_guard;
+      }
+      return std::nullopt;
+    }
+  }
+  header_guard.Drop();
+  while (true) {
+    auto inter_page = cur_guard.As<InternalPage>();
+    int slot = inter_page->GetIndexByKey(key, comparator_);
+    int child_page_id = inter_page->ValueAt(slot);
+    auto child_guard = bpm_->ReadPage(child_page_id);
+    auto child_page = child_guard.As<BPlusTreePage>();
+    if (child_page->IsLeafPage()) {
+      child_guard.Drop();
+      auto write_guard = bpm_->WritePage(child_page_id);
+      auto leaf_page = write_guard.As<LeafPage>();
+      if (leaf_page->GetSize() < leaf_page->GetMaxSize() - 1 ||
+          leaf_page->InTombstones(key, comparator_)) {
+        return write_guard;
+      }
+      return std::nullopt;
+    }
+    cur_guard = std::move(child_guard);
+  }
+}
+
+FULL_INDEX_TEMPLATE_ARGUMENTS
+auto BPLUSTREE_TYPE::FindLeafPageOptimisticDelete(const KeyType &key) -> std::optional<WritePageGuard> {
+  auto header_guard = bpm_->ReadPage(header_page_id_);
+  auto header_page = header_guard.As<BPlusTreeHeaderPage>();
+  auto root_page_id = header_page->root_page_id_;
+
+  if (root_page_id == INVALID_PAGE_ID) {
+    return std::nullopt;
+  }
+  auto cur_guard = bpm_->ReadPage(root_page_id);
+  {
+    auto page = cur_guard.As<BPlusTreePage>();
+    if (page->IsLeafPage()) {
+      cur_guard.Drop();
+      auto write_guard = bpm_->WritePage(root_page_id);
+      auto leaf_page = write_guard.As<LeafPage>();
+      if (leaf_page->GetSize() > 1 ||
+          leaf_page->GetNumTombstones() < LEAF_PAGE_TOMB_CNT ||
+          leaf_page->InTombstones(key, comparator_)) {
+        return write_guard;
+      }
+      return std::nullopt;
+    }
+  }
+  header_guard.Drop();
+  while (true) {
+    auto inter_page = cur_guard.As<InternalPage>();
+    int slot = inter_page->GetIndexByKey(key, comparator_);
+    int child_page_id = inter_page->ValueAt(slot);
+    auto child_guard = bpm_->ReadPage(child_page_id);
+    auto child_page = child_guard.As<BPlusTreePage>();
+    if (child_page->IsLeafPage()) {
+      child_guard.Drop();
+      auto write_guard = bpm_->WritePage(child_page_id);
+      auto leaf_page = write_guard.As<LeafPage>();
+      if (leaf_page->GetSize() > leaf_page->GetMinSize() ||
+        leaf_page->GetNumTombstones() < LEAF_PAGE_TOMB_CNT ||
+        leaf_page->InTombstones(key, comparator_)) {
+        return write_guard;
+      }
+      return std::nullopt;
+    }
+    cur_guard = std::move(child_guard);
+  }
+}
 
 template class BPlusTree<GenericKey<8>, RID, GenericComparator<8>>;
 template class BPlusTree<GenericKey<8>, RID, GenericComparator<8>, 3>;

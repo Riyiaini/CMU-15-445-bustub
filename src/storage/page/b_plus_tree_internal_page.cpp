@@ -67,6 +67,16 @@ void B_PLUS_TREE_INTERNAL_PAGE_TYPE::Insert(const KeyType &key, const ValueType 
 }
 
 INDEX_TEMPLATE_ARGUMENTS
+void B_PLUS_TREE_INTERNAL_PAGE_TYPE::EraseAt(int index) {
+  int size = GetSize();
+  BUSTUB_ASSERT(index > 0 && index < size, "invalid index for erase");
+  int move_size = size - index - 1;
+  memmove(key_array_ + index, key_array_ + index + 1, move_size * sizeof(KeyType));
+  memmove(page_id_array_ + index, page_id_array_ + index + 1, move_size * sizeof(ValueType));
+  SetSize(size - 1);
+}
+
+INDEX_TEMPLATE_ARGUMENTS
 auto B_PLUS_TREE_INTERNAL_PAGE_TYPE::Split(BPlusTreeInternalPage *new_page) -> KeyType {
   int max_size = GetMaxSize();
   int min_size = GetMinSize();
