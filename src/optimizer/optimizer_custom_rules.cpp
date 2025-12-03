@@ -12,6 +12,7 @@
 
 #include "execution/plans/abstract_plan.h"
 #include "optimizer/optimizer.h"
+#include "execution/expressions/constant_value_expression.h"
 
 // Note for 2023 Fall: You can add all optimizer rule implementations and apply the rules as you want in this file.
 // Note that for some test cases, we force using starter rules, so that the configuration here won't take effects.

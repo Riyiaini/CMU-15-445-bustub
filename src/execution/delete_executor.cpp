@@ -25,12 +25,12 @@ namespace bustub {
  */
 DeleteExecutor::DeleteExecutor(ExecutorContext *exec_ctx, const DeletePlanNode *plan,
                                std::unique_ptr<AbstractExecutor> &&child_executor)
-    : AbstractExecutor(exec_ctx) {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
+    : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {
+  table_info_ = exec_ctx_->GetCatalog()->GetTable(plan_->GetTableOid()).get();
 }
 
 /** Initialize the delete */
-void DeleteExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+void DeleteExecutor::Init() { child_executor_->Init(); }
 
 /**
  * Yield the number of rows deleted from the table.
@@ -44,7 +44,46 @@ void DeleteExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
  */
 auto DeleteExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch,
                           size_t batch_size) -> bool {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
+  if (is_finished_) {
+    return false;
+  }
+
+  auto indexes = exec_ctx_->GetCatalog()->GetTableIndexes(table_info_->name_);
+
+  int32_t total_deleted = 0;
+  std::vector<Tuple> child_tuples;
+  std::vector<RID> child_rids;
+
+  while (child_executor_->Next(&child_tuples, &child_rids, batch_size)) {
+
+    for (size_t i = 0; i < child_tuples.size(); ++i) {
+      auto &tuple = child_tuples[i];
+      auto &rid = child_rids[i];
+      auto tuple_meta = table_info_->table_->GetTupleMeta(rid);
+      tuple_meta.is_deleted_ = true;
+      table_info_->table_->UpdateTupleMeta(tuple_meta, rid);
+
+      for (const auto &index : indexes) {
+        index->index_->DeleteEntry(
+        tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs()),
+        rid, exec_ctx_->GetTransaction()); 
+      }
+      total_deleted++;
+    }
+    
+    child_tuples.clear();
+    child_rids.clear();
+  }
+
+  tuple_batch->clear();
+  rid_batch->clear();
+
+  std::vector<Value> values;
+  values.emplace_back(TypeId::INTEGER, total_deleted);
+  tuple_batch->emplace_back(values, &GetOutputSchema());
+
+  is_finished_ = true;
+  return true;
 }
 
 }  // namespace bustub

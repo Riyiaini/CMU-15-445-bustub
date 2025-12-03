@@ -25,12 +25,14 @@ namespace bustub {
  */
 InsertExecutor::InsertExecutor(ExecutorContext *exec_ctx, const InsertPlanNode *plan,
                                std::unique_ptr<AbstractExecutor> &&child_executor)
-    : AbstractExecutor(exec_ctx) {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
+    : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)) {
+      table_info_ = exec_ctx_->GetCatalog()->GetTable(plan_->GetTableOid()).get();
 }
 
 /** Initialize the insert */
-void InsertExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+void InsertExecutor::Init() {
+  child_executor_->Init();
+}
 
 /**
  * Yield the number of rows inserted into the table.
@@ -44,7 +46,42 @@ void InsertExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
  */
 auto InsertExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch,
                           size_t batch_size) -> bool {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
+  if (is_finished) {
+    return false;
+  }
+
+  std::vector<Tuple> child_tuples;
+  std::vector<RID> child_rids;
+
+  int32_t total_inserted = 0;
+  auto indexes = exec_ctx_->GetCatalog()->GetTableIndexes(table_info_->name_);
+
+  while (child_executor_->Next(&child_tuples, &child_rids, batch_size)) {
+    
+    for (auto &tuple : child_tuples) {
+      auto rid_opt = table_info_->table_->InsertTuple({0, false}, tuple, exec_ctx_->GetLockManager(), 
+                                      exec_ctx_->GetTransaction(), table_info_->oid_);
+      for (const auto &index : indexes) {
+        index->index_->InsertEntry(
+          tuple.KeyFromTuple(table_info_->schema_, index->key_schema_, index->index_->GetKeyAttrs()),
+          rid_opt.value(), exec_ctx_->GetTransaction());
+      }
+      total_inserted++;
+    }
+    
+    child_tuples.clear();
+    child_rids.clear();
+  }
+
+  tuple_batch->clear();
+  rid_batch->clear();
+
+  std::vector<Value> values;
+  values.emplace_back(TypeId::INTEGER, total_inserted);
+  tuple_batch->emplace_back(values, &GetOutputSchema());
+
+  is_finished = true;
+  return true;
 }
 
 }  // namespace bustub

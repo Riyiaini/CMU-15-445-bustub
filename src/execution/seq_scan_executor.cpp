@@ -12,6 +12,7 @@
 
 #include "execution/executors/seq_scan_executor.h"
 #include "common/macros.h"
+#include "optimizer/optimizer_internal.h"
 
 namespace bustub {
 
@@ -20,12 +21,15 @@ namespace bustub {
  * @param exec_ctx The executor context
  * @param plan The sequential scan plan to be executed
  */
-SeqScanExecutor::SeqScanExecutor(ExecutorContext *exec_ctx, const SeqScanPlanNode *plan) : AbstractExecutor(exec_ctx) {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
+SeqScanExecutor::SeqScanExecutor(ExecutorContext *exec_ctx, const SeqScanPlanNode *plan) 
+  : AbstractExecutor(exec_ctx), plan_(plan) {
+  table_info_ = exec_ctx_->GetCatalog()->GetTable(plan_->GetTableOid()).get();
 }
 
 /** Initialize the sequential scan */
-void SeqScanExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+void SeqScanExecutor::Init() {
+  table_iterator_ = std::make_unique<TableIterator>(table_info_->table_->MakeIterator());
+}
 
 /**
  * Yield the next tuple batch from the seq scan.
@@ -36,7 +40,34 @@ void SeqScanExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
  */
 auto SeqScanExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch,
                            size_t batch_size) -> bool {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
+
+  tuple_batch->clear();
+  rid_batch->clear();
+
+  if (IsPredicateFalse(plan_->filter_predicate_)) {
+    return false;
+  }
+  size_t batch_idx = 0;
+  while (batch_idx < batch_size) {
+    if (table_iterator_->IsEnd()) {
+      return !tuple_batch->empty();
+    }
+    auto [tuple_meta, tuple] = table_iterator_->GetTuple();
+    if (tuple_meta.is_deleted_) {
+      ++(*table_iterator_);
+      continue;
+    }
+    auto value = plan_->filter_predicate_->Evaluate(&tuple, GetOutputSchema());
+    if (value.IsNull() || !value.GetAs<bool>()) {
+      ++(*table_iterator_);
+      continue;
+    }
+    tuple_batch->push_back(std::move(tuple));
+    rid_batch->push_back(table_iterator_->GetRID());
+    ++(*table_iterator_);
+    ++batch_idx;
+  }
+  return true;
 }
 
 }  // namespace bustub
