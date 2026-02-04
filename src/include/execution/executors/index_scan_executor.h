@@ -43,12 +43,16 @@ class IndexScanExecutor : public AbstractExecutor {
 
   const TableInfo *table_info_;
 
+  const IndexInfo *index_info_;
+
   BPlusTreeIndexForTwoIntegerColumn *index_;
 
   BPlusTreeIndexIteratorForTwoIntegerColumn index_iterator_;
 
   BPlusTreeIndexIteratorForTwoIntegerColumn iterator_end_;
 
-  bool is_point_look_up;
+  std::vector<Tuple> point_lookup_tuples_;
+
+  bool is_finished_{false};
 };
 }  // namespace bustub

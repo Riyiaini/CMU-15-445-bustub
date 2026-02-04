@@ -312,8 +312,8 @@ auto Type::GetData(const Value &val __attribute__((unused))) const -> const char
 /**
  * Get the length of the variable length data
  */
-auto Type::GetStorageSize(const Value &val __attribute__((unused))) const -> uint32_t {
-  throw NotImplementedException("GetStorageSize not implemented");
+auto Type::GetStorageSize(const Value &val) const -> uint32_t {
+  return sizeof(val.value_);
 }
 
 }  // namespace bustub

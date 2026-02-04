@@ -115,7 +115,6 @@ auto BPLUSTREE_TYPE::Insert(const KeyType &key, const ValueType &value) -> bool 
     }
   }
 
-  std::chrono::high_resolution_clock::time_point start = std::chrono::high_resolution_clock::now();
   Context ctx;
   ctx.header_page_ = bpm_->WritePage(header_page_id_);
   auto &header_guard = ctx.header_page_.value();
@@ -771,6 +770,8 @@ auto BPLUSTREE_TYPE::FindLeafPageOptimisticDelete(const KeyType &key) -> std::op
     cur_guard = std::move(child_guard);
   }
 }
+
+template class BPlusTree<GenericKey<4>, RID, GenericComparator<4>>;
 
 template class BPlusTree<GenericKey<8>, RID, GenericComparator<8>>;
 template class BPlusTree<GenericKey<8>, RID, GenericComparator<8>, 3>;

@@ -25,12 +25,27 @@ namespace bustub {
  */
 AggregationExecutor::AggregationExecutor(ExecutorContext *exec_ctx, const AggregationPlanNode *plan,
                                          std::unique_ptr<AbstractExecutor> &&child_executor)
-    : AbstractExecutor(exec_ctx) {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
-}
+    : AbstractExecutor(exec_ctx), plan_(plan), child_executor_(std::move(child_executor)),
+      aht_{plan_->GetAggregates(), plan_->GetAggregateTypes()}, aht_iterator_(aht_.Begin()) {}
 
 /** Initialize the aggregation */
-void AggregationExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."); }
+void AggregationExecutor::Init() {
+  child_executor_->Init();
+  std::vector<Tuple> tuple_batch;
+  std::vector<RID> rid_batch;
+  aht_.Clear();
+  bool is_empty = true;
+  while (child_executor_->Next(&tuple_batch, &rid_batch, BUSTUB_BATCH_SIZE)) {
+    for (const auto &tuple : tuple_batch) {  
+      is_empty = false;
+      aht_.InsertCombine(MakeAggregateKey(&tuple), MakeAggregateValue(&tuple));
+    }
+  }
+  if (is_empty && plan_->GetGroupBys().empty()) {
+    aht_.Init();
+  }
+  aht_iterator_ = aht_.Begin();
+}
 
 /**
  * Yield the next tuple batch from the aggregation.
@@ -42,7 +57,26 @@ void AggregationExecutor::Init() { UNIMPLEMENTED("TODO(P3): Add implementation."
 
 auto AggregationExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<bustub::RID> *rid_batch,
                                size_t batch_size) -> bool {
-  UNIMPLEMENTED("TODO(P3): Add implementation.");
+  if (aht_iterator_ == aht_.End()) {
+    return false;
+  }
+
+  while (aht_iterator_ != aht_.End() && tuple_batch->size() < batch_size) {
+    std::vector<Value> values;
+    values.reserve(plan_->GetGroupBys().size() + plan_->GetAggregates().size());
+    // Add group by keys
+    for (const auto &key : aht_iterator_.Key().group_bys_) {
+      values.push_back(key);
+    }
+    // Add aggregate values
+    for (const auto &val : aht_iterator_.Val().aggregates_) {
+      values.push_back(val);
+    }
+    tuple_batch->emplace_back(values, &plan_->OutputSchema());
+    rid_batch->emplace_back();  // RID is not used in aggregation
+    ++aht_iterator_;
+  }
+  return !tuple_batch->empty();
 }
 
 /** Do not use or remove this function; otherwise, you will get zero points. */

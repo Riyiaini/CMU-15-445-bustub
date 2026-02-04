@@ -43,5 +43,7 @@ class SeqScanExecutor : public AbstractExecutor {
   const TableInfo *table_info_;
 
   std::unique_ptr<TableIterator> table_iterator_;
+
+  bool is_finished_{false};
 };
 }  // namespace bustub

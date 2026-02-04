@@ -17,6 +17,8 @@
 
 #include "execution/executor_context.h"
 #include "execution/executors/abstract_executor.h"
+#include "execution/executors/aggregation_executor.h"
+#include "execution/executors/external_merge_sort_executor.h"
 #include "execution/plans/window_plan.h"
 #include "storage/table/tuple.h"
 
@@ -79,5 +81,7 @@ class WindowFunctionExecutor : public AbstractExecutor {
 
   /** The child executor from which tuples are obtained */
   std::unique_ptr<AbstractExecutor> child_executor_;
+
+  std::vector<std::unordered_map<AggregateKey, Value>> partitions;
 };
 }  // namespace bustub

@@ -35,12 +35,15 @@ class IndexScanPlanNode : public AbstractPlanNode {
    * @param pred_key The key for point lookup
    */
   IndexScanPlanNode(SchemaRef output, table_oid_t table_oid, index_oid_t index_oid,
-                    AbstractExpressionRef filter_predicate = nullptr, std::vector<AbstractExpressionRef> pred_keys = {})
+                    AbstractExpressionRef filter_predicate = nullptr, std::vector<std::vector<AbstractExpressionRef>> pred_keys = {}, 
+                    std::vector<AbstractExpressionRef> remaining_preds = {}, bool is_point_lookup = false)
       : AbstractPlanNode(std::move(output), {}),
         table_oid_(table_oid),
         index_oid_(index_oid),
         filter_predicate_(std::move(filter_predicate)),
-        pred_keys_(std::move(pred_keys)) {}
+        pred_keys_(std::move(pred_keys)),
+        remaining_preds_(std::move(remaining_preds)),
+        is_point_lookup_(is_point_lookup) {}
 
   auto GetType() const -> PlanType override { return PlanType::IndexScan; }
 
@@ -65,9 +68,13 @@ class IndexScanPlanNode : public AbstractPlanNode {
    * The constant value keys to lookup.
    * For example when dealing "WHERE v = 1" we could store the constant value 1 here
    */
-  std::vector<AbstractExpressionRef> pred_keys_;
+  std::vector<std::vector<AbstractExpressionRef>> pred_keys_;
 
   // Add anything you want here for index lookup
+
+  std::vector<AbstractExpressionRef> remaining_preds_;
+
+  bool is_point_lookup_;
 
  protected:
   auto PlanNodeToString() const -> std::string override {

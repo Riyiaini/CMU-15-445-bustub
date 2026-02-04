@@ -108,6 +108,7 @@ SKIPLIST_TEMPLATE_ARGUMENTS auto SkipList<K, Compare, MaxHeight, Seed>::Insert(c
       curr = next;
     }
   }
+  return false;
 }
 
 /**
@@ -143,6 +144,7 @@ SKIPLIST_TEMPLATE_ARGUMENTS auto SkipList<K, Compare, MaxHeight, Seed>::Erase(co
       level++;
     }
   }
+  return false;
 }
 
 
@@ -175,6 +177,7 @@ SKIPLIST_TEMPLATE_ARGUMENTS auto SkipList<K, Compare, MaxHeight, Seed>::Contains
       level++;
     }
   }
+  return false;
 }
 
 /**

@@ -77,7 +77,7 @@ void INDEXITERATOR_TYPE::SkipDeleted() {
         guard_.Drop();
         return;
       }
-      guard_ = std::move(bpm_->ReadPage(next_page_id));
+      guard_ = bpm_->ReadPage(next_page_id);
       leaf_page = guard_.As<BPlusTreeLeafPage<KeyType, ValueType, KeyComparator, NumTombs>>();
       index_in_page_ = 0;
     }

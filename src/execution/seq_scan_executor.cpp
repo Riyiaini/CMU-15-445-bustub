@@ -29,6 +29,7 @@ SeqScanExecutor::SeqScanExecutor(ExecutorContext *exec_ctx, const SeqScanPlanNod
 /** Initialize the sequential scan */
 void SeqScanExecutor::Init() {
   table_iterator_ = std::make_unique<TableIterator>(table_info_->table_->MakeIterator());
+  is_finished_ = false;
 }
 
 /**
@@ -43,13 +44,14 @@ auto SeqScanExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<
 
   tuple_batch->clear();
   rid_batch->clear();
-
-  if (IsPredicateFalse(plan_->filter_predicate_)) {
+        
+  if (is_finished_ || IsPredicateFalse(plan_->filter_predicate_)) {
     return false;
   }
   size_t batch_idx = 0;
   while (batch_idx < batch_size) {
     if (table_iterator_->IsEnd()) {
+      is_finished_ = true;
       return !tuple_batch->empty();
     }
     auto [tuple_meta, tuple] = table_iterator_->GetTuple();
@@ -57,10 +59,12 @@ auto SeqScanExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<
       ++(*table_iterator_);
       continue;
     }
-    auto value = plan_->filter_predicate_->Evaluate(&tuple, GetOutputSchema());
-    if (value.IsNull() || !value.GetAs<bool>()) {
-      ++(*table_iterator_);
-      continue;
+    if (plan_->filter_predicate_ != nullptr) {
+      auto value = plan_->filter_predicate_->Evaluate(&tuple, GetOutputSchema());
+      if (value.IsNull() || !value.GetAs<bool>()) {
+        ++(*table_iterator_);
+        continue;
+      }
     }
     tuple_batch->push_back(std::move(tuple));
     rid_batch->push_back(table_iterator_->GetRID());

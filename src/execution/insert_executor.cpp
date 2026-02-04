@@ -50,6 +50,9 @@ auto InsertExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<b
     return false;
   }
 
+  tuple_batch->clear();
+  rid_batch->clear();
+
   std::vector<Tuple> child_tuples;
   std::vector<RID> child_rids;
 
@@ -79,6 +82,7 @@ auto InsertExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<b
   std::vector<Value> values;
   values.emplace_back(TypeId::INTEGER, total_inserted);
   tuple_batch->emplace_back(values, &GetOutputSchema());
+  rid_batch->emplace_back();  // RID is not used in insert
 
   is_finished = true;
   return true;

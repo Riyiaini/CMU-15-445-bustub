@@ -81,6 +81,7 @@ auto DeleteExecutor::Next(std::vector<bustub::Tuple> *tuple_batch, std::vector<b
   std::vector<Value> values;
   values.emplace_back(TypeId::INTEGER, total_deleted);
   tuple_batch->emplace_back(values, &GetOutputSchema());
+  rid_batch->emplace_back();  // RID is not used in delete
 
   is_finished_ = true;
   return true;

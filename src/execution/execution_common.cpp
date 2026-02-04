@@ -20,10 +20,43 @@
 
 namespace bustub {
 
-TupleComparator::TupleComparator(std::vector<OrderBy> order_bys) : order_bys_(std::move(order_bys)) {}
+TupleComparator::TupleComparator(std::vector<OrderBy> order_bys) : order_bys_(std::move(order_bys)) {
+   for (auto &order_by : order_bys_) {
+    auto &[type, null_type, _] = order_by;
+    if (type == OrderByType::DEFAULT) {
+      type = OrderByType::ASC;
+    }
+    if (null_type == OrderByNullType::DEFAULT) {
+      null_type = (type == OrderByType::ASC) ? OrderByNullType::NULLS_FIRST : OrderByNullType::NULLS_LAST;
+    }
+  }
+}
 
 /** TODO(P3): Implement the comparison method */
-auto TupleComparator::operator()(const SortEntry &entry_a, const SortEntry &entry_b) const -> bool { return false; }
+auto TupleComparator::operator()(const SortEntry &entry_a, const SortEntry &entry_b) const -> bool {
+  for (size_t i = 0; i < order_bys_.size(); ++i) {
+    auto &value_a = entry_a.first[i];
+    auto &value_b = entry_b.first[i];
+
+    if ((value_a.IsNull() && value_b.IsNull()) || value_a.CompareEquals(value_b) == CmpBool::CmpTrue) {
+      continue;
+    }
+    auto [type, null_type, _] = order_bys_[i];
+    
+    if (value_a.IsNull()) {
+      return null_type == OrderByNullType::NULLS_FIRST;
+    }
+    if (value_b.IsNull()) {
+      return null_type == OrderByNullType::NULLS_LAST;
+    }
+    
+    if (value_a.CompareLessThan(value_b) == CmpBool::CmpTrue) {
+      return type == OrderByType::ASC;
+    }
+    return type == OrderByType::DESC;
+  }
+  return false;
+}
 
 /**
  * Generate sort key for a tuple based on the order by expressions.
@@ -31,7 +64,28 @@ auto TupleComparator::operator()(const SortEntry &entry_a, const SortEntry &entr
  * TODO(P3): Implement this method.
  */
 auto GenerateSortKey(const Tuple &tuple, const std::vector<OrderBy> &order_bys, const Schema &schema) -> SortKey {
-  return {};
+  std::vector<Value> values;
+  values.reserve(order_bys.size());
+  for (const auto &order_by : order_bys) {
+    values.emplace_back(std::get<2>(order_by)->Evaluate(&tuple, schema));
+  }
+  return values;
+}
+
+/**
+ * Generate sort key for a tuple based on the order by expressions and return the size of the key.
+ */
+auto GenerateSortKeyAndSize(const Tuple &tuple, const std::vector<OrderBy> &order_bys, const Schema &schema) -> std::pair<SortKey, size_t> {
+  std::vector<Value> values;
+  size_t key_size = 0;
+  values.reserve(order_bys.size());
+  for (const auto &order_by : order_bys) {
+    auto value = std::get<2>(order_by)->Evaluate(&tuple, schema);
+    size_t value_size = value.GetStorageSize();
+    key_size += value_size == BUSTUB_VALUE_NULL ? 0 : value_size;
+    values.emplace_back(std::move(value));
+  }
+  return {values, key_size};
 }
 
 /**

@@ -250,3 +250,10 @@ select * from t1 where v3 = 445;
 ----
 6 0 445 
 8 10 445 
+
+query rowsort +ensure:index_scan
+select * from t1 where v1 >= 6 and v1 <= 8;
+----
+6 0 445 
+7 -10 645 
+8 10 445 
