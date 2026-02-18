@@ -62,6 +62,176 @@ namespace bustub {
  * UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING when there is no ORDER BY clause.
  *
  */
+
+/**
+ * A simplified hash table that has all the necessary functionality for aggregations.
+ */
+ class SimpleWindowFunctionHashTable {
+ public:
+  /**
+   * Construct a new SimpleWindowFunctionHashTable instance.
+   * @param wf_type the types of window function
+   */
+  SimpleWindowFunctionHashTable(const WindowFunctionType wf_type)
+      : wf_type_(wf_type) {}
+
+  /** @return The initial aggregate value for this window function executor */
+  auto GenerateInitialAggregateValue() -> Value {
+    switch (wf_type_) {
+      case WindowFunctionType::CountStarAggregate:
+        // Count start starts at zero.
+        return ValueFactory::GetIntegerValue(0);
+      case WindowFunctionType::Rank:
+      case WindowFunctionType::CountAggregate:
+      case WindowFunctionType::SumAggregate:
+      case WindowFunctionType::MinAggregate:
+      case WindowFunctionType::MaxAggregate:
+        // Others starts at null.
+        return ValueFactory::GetNullValueByType(TypeId::INTEGER);
+      default:
+        return Value(TypeId::INVALID);
+    }
+  }
+
+  /**
+   * Combines the input into the aggregation result.
+   * @param[out] result The output aggregate value
+   * @param input The input value
+   */
+  void CombineAggregateValues(Value *result, const Value &input) {
+      // Handle COUNT(*) separately
+    if (wf_type_ == WindowFunctionType::CountStarAggregate) {
+      *result = result->Add(ValueFactory::GetIntegerValue(1));
+      return;
+    } 
+    if (wf_type_ == WindowFunctionType::Rank) {
+      position_++;
+      if (last_input_.CompareEquals(input) != CmpBool::CmpTrue) {
+        rank_ = position_;
+        last_input_ = input;
+      }
+      
+      *result = ValueFactory::GetIntegerValue(rank_);
+      return;
+    }
+    if (input.IsNull()) {
+      return;
+    }
+    switch (wf_type_) {
+      case WindowFunctionType::CountAggregate:
+        if (result->IsNull()) {
+          *result = ValueFactory::GetIntegerValue(1);
+        } else {
+          *result = result->Add(ValueFactory::GetIntegerValue(1));
+        }
+        break;
+      case WindowFunctionType::SumAggregate:
+        if (result->IsNull()) {
+          *result = input;
+        } else {
+          *result = result->Add(input);
+        }
+        break;
+      case WindowFunctionType::MinAggregate:
+        if (result->IsNull()) {
+          *result = input;
+        } else {
+          *result = result->Min(input);
+        }
+        break;
+      case WindowFunctionType::MaxAggregate:
+        if (result->IsNull()) {
+          *result = input;
+        } else {
+          *result = result->Max(input);
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  void Init() {
+    // Initialize the hash table with no entries.
+    ht_.clear();
+    // Insert a single entry with null group bys and initial aggregate values.
+    AggregateKey empty_key;
+    ht_.insert({empty_key, GenerateInitialAggregateValue()});
+  }
+
+  /**
+   * Inserts a value into the hash table and then combines it with the current aggregation.
+   * @param agg_key the key to be inserted
+   * @param agg_val the value to be inserted
+   */
+  auto InsertCombine(const AggregateKey &agg_key, const Value &agg_val) -> Value {
+    if (ht_.count(agg_key) == 0) {
+      ht_.insert({agg_key, GenerateInitialAggregateValue()});
+    }
+    CombineAggregateValues(&ht_[agg_key], agg_val);
+    return ht_[agg_key];
+  }
+
+  auto GetAggregateValue(const AggregateKey &agg_key) -> Value {
+    if (ht_.count(agg_key) == 0) {
+      return GenerateInitialAggregateValue();
+    }
+    return ht_[agg_key];
+  }
+
+  /**
+   * Clear the hash table
+   */
+  void Clear() { ht_.clear(); }
+
+  /** An iterator over the aggregation hash table */
+  class Iterator {
+   public:
+    /** Creates an iterator for the aggregate map. */
+    explicit Iterator(std::unordered_map<AggregateKey, Value>::const_iterator iter) : iter_{iter} {}
+
+    /** @return The key of the iterator */
+    auto Key() -> const AggregateKey & { return iter_->first; }
+
+    /** @return The value of the iterator */
+    auto Val() -> const Value & { return iter_->second; }
+
+    /** @return The iterator before it is incremented */
+    auto operator++() -> Iterator & {
+      ++iter_;
+      return *this;
+    }
+
+    /** @return `true` if both iterators are identical */
+    auto operator==(const Iterator &other) -> bool { return this->iter_ == other.iter_; }
+
+    /** @return `true` if both iterators are different */
+    auto operator!=(const Iterator &other) -> bool { return this->iter_ != other.iter_; }
+
+   private:
+    /** Aggregates map */
+    std::unordered_map<AggregateKey, Value>::const_iterator iter_;
+  };
+
+  /** @return Iterator to the start of the hash table */
+  auto Begin() -> Iterator { return Iterator{ht_.cbegin()}; }
+
+  /** @return Iterator to the end of the hash table */
+  auto End() -> Iterator { return Iterator{ht_.cend()}; }
+
+ private:
+  /** The hash table is just a map from aggregate keys to aggregate values */
+  std::unordered_map<AggregateKey, Value> ht_{};
+  /** The types of aggregations that we have */
+  const WindowFunctionType wf_type_;
+  /** The last value seen, used for RANK calculation */
+  Value last_input_;
+  /** The current rank, used for RANK calculation */
+  size_t rank_{1};
+  /** The current position, used for RANK calculation */
+  size_t position_{0};
+};
+
 class WindowFunctionExecutor : public AbstractExecutor {
  public:
   WindowFunctionExecutor(ExecutorContext *exec_ctx, const WindowFunctionPlanNode *plan,
@@ -76,6 +246,16 @@ class WindowFunctionExecutor : public AbstractExecutor {
   auto GetOutputSchema() const -> const Schema & override { return plan_->OutputSchema(); }
 
  private:
+
+  auto GetAggregateKey(const std::vector<AbstractExpressionRef> &partition_by, const Tuple *tuple) -> AggregateKey {
+    std::vector<Value> values;
+    for (const auto &expr : partition_by) {
+      auto res = expr->Evaluate(tuple, child_executor_->GetOutputSchema());
+      values.push_back(res);
+    }
+    return AggregateKey{values};
+  };
+
   /** The window aggregation plan node to be executed */
   const WindowFunctionPlanNode *plan_;
 
@@ -83,5 +263,9 @@ class WindowFunctionExecutor : public AbstractExecutor {
   std::unique_ptr<AbstractExecutor> child_executor_;
 
   std::vector<std::unordered_map<AggregateKey, Value>> partitions;
+
+  std::unordered_map<uint32_t, SimpleWindowFunctionHashTable> hts_;
+
+  bool is_ordered_{false};
 };
 }  // namespace bustub

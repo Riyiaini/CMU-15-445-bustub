@@ -71,7 +71,7 @@ class SimpleAggregationHashTable {
     for (uint32_t i = 0; i < agg_exprs_.size(); i++) {
       // Handle COUNT(*) separately
       if (agg_types_[i] == AggregationType::CountStarAggregate) {
-        result->aggregates_[i] = result->aggregates_[i].Add(input.aggregates_[i]);
+        result->aggregates_[i] = result->aggregates_[i].Add(ValueFactory::GetIntegerValue(1));
         continue;
       }
       if (input.aggregates_[i].IsNull()) {

@@ -38,6 +38,9 @@ void ExternalMergeSortExecutor<K>::Init() {
   std::vector<SortEntry> entries;
   size_t entries_size = 0;
 
+  runs_.clear();
+  iterators_.clear();
+
   child_executor_->Init();
 
   while (child_executor_->Next(&tuple_batch, &rid_batch, BUSTUB_BATCH_SIZE)) {
@@ -55,7 +58,7 @@ void ExternalMergeSortExecutor<K>::Init() {
         std::cout << "key size: " << key_size << ", tuple len: " << tuple.GetLength() << "key cap: " << key.capacity() << std::endl; */
         runs_.emplace_back(std::move(pages), exec_ctx_->GetBufferPoolManager());
         entries.clear();
-        entries_size = 0;
+        entries_size = delta;
       }
       entries.emplace_back(SortEntry{std::move(key), std::move(tuple)});
     }
@@ -112,7 +115,7 @@ auto ExternalMergeSortExecutor<K>::Next(std::vector<bustub::Tuple> *tuple_batch,
     if (iterators_.empty()) {
       iterators_.push_back(runs_[0].Begin());
     }
-    auto it = iterators_[0];
+    auto &it = iterators_[0];
     while (tuple_batch->size() < batch_size) {
       auto tuple = it.GetAndIncrement();
       if (tuple.GetLength() == 0) {
@@ -132,7 +135,7 @@ auto ExternalMergeSortExecutor<K>::Next(std::vector<bustub::Tuple> *tuple_batch,
       auto entry = std::make_pair(
         GenerateSortKey(tuple, plan_->GetOrderBy(), plan_->OutputSchema()), std::move(tuple));
       min_heap_.push(HeapElement(entry, idx));
-      iterators_.emplace_back(it);
+      iterators_.emplace_back(std::move(it));
     }
   }
   while (tuple_batch->size() < batch_size && !min_heap_.empty()) {
@@ -222,7 +225,7 @@ void ExternalMergeSortExecutor<K>::MergeKRuns(size_t start_idx, size_t end_idx, 
       intermediate_page->AppendTuple(tuple);
     }
     min_heap.pop();
-    auto next_tuple = iterators[run_idx].GetAndIncrement();
+    auto next_tuple = iterators[run_idx - start_idx].GetAndIncrement();
     if (next_tuple.GetLength() == 0) {
       runs_[run_idx].CleanPages();
       continue;
